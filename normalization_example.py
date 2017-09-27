@@ -6,12 +6,14 @@ from matplotlib import pyplot as plt
 N_cycles = 10.0
 N_points = 256.0
 
-# make a square wave w/ duty cycle <> 0.5
 t = np.arange(0,N_cycles*np.pi,np.pi*N_cycles/N_points)
 signal = np.sin(t)
-threshold = 0.3
-signal[np.where(signal>=threshold)]=1.0
-signal[np.where(signal<threshold)]=-1.0
+
+use_rect = False
+if use_rect:
+    threshold = -0.75
+    signal[np.where(signal>=threshold)]=1.0
+    signal[np.where(signal<threshold)]=-1.0
 
 # normalize the signal (not technically
 # necessary for this example, but required
@@ -50,8 +52,12 @@ print 'rho_approx',rho_approx
 # yield the correct correlation:
 sample_1_cropped = sample_1[offset:]
 sample_2_cropped = sample_2[:-offset]
+
 # these should be identical vectors:
 assert np.all(sample_1_cropped==sample_2_cropped)
+
+# compute autocorrelations of cropped samples
+# and corresponding value for rho
 autocorrelation_1_cropped = np.abs(np.fft.ifft(np.fft.fft(sample_1_cropped)*np.fft.fft(sample_1_cropped).conjugate()))
 autocorrelation_2_cropped = np.abs(np.fft.ifft(np.fft.fft(sample_2_cropped)*np.fft.fft(sample_2_cropped).conjugate()))
 xc_denom_exact_1 = np.sqrt(np.max(autocorrelation_1_cropped))*np.sqrt(np.max(autocorrelation_2_cropped))
@@ -63,18 +69,9 @@ print 'rho_exact_1',rho_exact_1
 # scale by the number of pixels used to
 # compute the numerator:
 scaling_factor = float(len(sample_1_cropped))/float(len(sample_1))
-print scaling_factor
+rho_exact_2 = np.max(xc_num)/(xc_denom_approx*scaling_factor)
+print 'rho_exact_2',rho_exact_2
 
-plt.plot(sample_1_cropped)
-plt.plot(sample_2_cropped)
-plt.show()
-
-
-sys.exit()
-
-
-
-
-plt.plot(s1)
-plt.plot(s2)
-plt.show()
+# finally a sanity check: is rho actually 1.0
+# for the two signals:
+print 'rho_corrcoef',np.corrcoef(sample_1_cropped,sample_2_cropped)[0,1]
