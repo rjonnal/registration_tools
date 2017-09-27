@@ -42,8 +42,8 @@ if offset_estimate>N//2:
 autocorrelation_1 = np.abs(np.fft.ifft(np.fft.fft(sample_1)*np.fft.fft(sample_1).conjugate()))
 autocorrelation_2 = np.abs(np.fft.ifft(np.fft.fft(sample_2)*np.fft.fft(sample_2).conjugate()))
 xc_denom_approx = np.sqrt(np.max(autocorrelation_1))*np.sqrt(np.max(autocorrelation_2))
-rho_approx = np.max(xc_num)/xc_denom_approx
-print 'rho_approx',rho_approx
+rho_approx = xc_num/xc_denom_approx
+print 'rho_approx',np.max(rho_approx)
 
 # this is an approximation because we've
 # included autocorrelation of the whole samples
@@ -61,17 +61,28 @@ assert np.all(sample_1_cropped==sample_2_cropped)
 autocorrelation_1_cropped = np.abs(np.fft.ifft(np.fft.fft(sample_1_cropped)*np.fft.fft(sample_1_cropped).conjugate()))
 autocorrelation_2_cropped = np.abs(np.fft.ifft(np.fft.fft(sample_2_cropped)*np.fft.fft(sample_2_cropped).conjugate()))
 xc_denom_exact_1 = np.sqrt(np.max(autocorrelation_1_cropped))*np.sqrt(np.max(autocorrelation_2_cropped))
-rho_exact_1 = np.max(xc_num)/xc_denom_exact_1
-print 'rho_exact_1',rho_exact_1
+rho_exact_1 = xc_num/xc_denom_exact_1
+print 'rho_exact_1',np.max(rho_exact_1)
 
 # alternatively we could try to use the
 # whole sample autocorrelations and just
 # scale by the number of pixels used to
 # compute the numerator:
 scaling_factor = float(len(sample_1_cropped))/float(len(sample_1))
-rho_exact_2 = np.max(xc_num)/(xc_denom_approx*scaling_factor)
-print 'rho_exact_2',rho_exact_2
+rho_exact_2 = xc_num/(xc_denom_approx*scaling_factor)
+print 'rho_exact_2',np.max(rho_exact_2)
 
 # finally a sanity check: is rho actually 1.0
 # for the two signals:
-print 'rho_corrcoef',np.corrcoef(sample_1_cropped,sample_2_cropped)[0,1]
+rho_corrcoef = np.corrcoef(sample_1_cropped,sample_2_cropped)[0,1]
+print 'rho_corrcoef',rho_corrcoef
+
+x = np.arange(len(rho_approx))
+plt.plot(x,rho_approx,label='FFT rho_approx')
+plt.plot(x,rho_exact_1,label='FFT rho_exact_1')
+plt.plot(x,rho_exact_2,label='FFT rho_exact_2')
+plt.plot(x,np.ones(len(x))*rho_corrcoef,'k--',label='Pearson rho')
+plt.legend()
+plt.ylim((.75,1.25))
+plt.xlim((0,20))
+plt.show()
