@@ -4,11 +4,12 @@ from scipy.signal import fftconvolve
 import sys,os,glob
 from matrix_tools import deproud
 
-def make_stack(N,xrms=2.0,yrms=2.0,noise_rms=5.0,noise_edge=0,line_rms=0.0,source_file='leaves.npy',width=None,height=None):
+def make_stack(N,xrms=2.0,yrms=2.0,noise_rms=5.0,noise_edge=0,line_rms=0.0,source_file='grass.npy',width=None,height=None):
 
-    
-    
-    src = np.load(os.path.join('images',source_file))
+    if source_file == 'random':
+        src = np.random.rand(2048,2048)
+    else:
+        src = np.load(os.path.join('images',source_file))
 
     sy,sx = src.shape
     yoff = int(3*yrms)

@@ -3,6 +3,8 @@ import numpy as np
 def deproud(im,y1,y2,x1,x2):
     '''Return bounding box coordinates that are not proud of the image.'''
     sy,sx = im.shape
+    print sy,y1,y2
+    print sx,x1,x2
     assert y2-y1<sy
     assert x2-x1<sx
     

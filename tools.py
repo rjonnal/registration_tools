@@ -48,7 +48,7 @@ def acxc(im1,im2):
     t2 = f2c**2*f1*f2/2.0
     return np.abs(np.fft.ifft2(t1+t2))
 
-def nxcorr(im1,im2,correct_for_overlap=True,xcfunc=xc):
+def nxcorr_overlap_norm(im1,im2,correct_for_overlap=True,xcfunc=xc):
     """This is the main cross-correlation function:
     it normalizes the images (subtracts means and
     divides by standard deviation), calls xc for
@@ -141,6 +141,9 @@ def nxcorr_ac_norm(im1,im2,correct_for_overlap=True,xcfunc=xc):
     out = xc_val/denom
     return out
 
+def nxcorr(im1,im2,correct_for_overlap=False,xcfunc=xc):
+    return nxcorr_ac_norm(im1,im2,correct_for_overlap=correct_for_overlap,xcfunc=xcfunc)
+
 def normalize(im):
     return (im-im.mean())/im.std()
 
@@ -152,24 +155,38 @@ def block_correct(im,peakx,peaky):
 
 class RegisteredPair:
 
-    def __init__(self,im1,im2):
+    def __init__(self,im1,im2,background_correct=False,normalize_rows=False):
+
         im1,im2 = equal_pad(im1,im2)
-        nxc = nxcorr(im1,im2,True)
-        nxc = np.fft.fftshift(nxc)
-        bsnxc = background_subtract(nxc)
-        self.correlation = nxc.max()
-        self.bscorrelation = bsnxc.max()
+        if (not np.count_nonzero(im1)) or (not np.count_nonzero(im2)):
+            nxc = np.zeros(im1.shape)
+            self.py = im1.shape[0]//2
+            self.px = im1.shape[1]//2
+            self.correlation = 0.0
+        else:
+            nxc = nxcorr(im1,im2,True)
+            nxc = np.fft.fftshift(nxc)
+            print 'got here'
+            if normalize_rows:
+                plt.figure()
+                plt.subplot(1,2,1)
+                plt.imshow(nxc)
+                plt.colorbar()
+                vprof = np.mean(nxc,axis=1)
+                nxc = nxc-vprof+vprof.mean()
+                plt.subplot(1,2,2)
+                plt.imshow(nxc)
+                plt.colorbar()
+                plt.show()
+            if background_correct:
+                nxc = background_subtract(nxc)
+                #nxc = nxc/np.std(nxc)
 
-        py,px = np.where(nxc==self.correlation)
-        bspy,bspx = np.where(nxc==self.correlation)
+            self.correlation = nxc.max()
+            py,px = np.where(nxc==self.correlation)
 
-        # check to make sure the nxc and the background-subtraced
-        # nxc have the same peak; this adds a bit of confidence
-        err = np.sqrt((py-bspy)**2+(px-bspx)**2)
-        #print err,self.correlation-self.bscorrelation
-        
-        self.py = py[0]
-        self.px = px[0]
+            self.py = py[0]
+            self.px = px[0]
 
         self.x,self.y = block_correct(nxc,self.px,self.py)
         self.im1 = im1
@@ -177,19 +194,20 @@ class RegisteredPair:
         self.nxc = nxc
 
     def show(self):
-        plt.figure()
         plt.subplot(2,2,1)
+        plt.cla()
         plt.imshow(self.im1,cmap='gray',interpolation='none',aspect='auto')
         plt.subplot(2,2,3)
-        plt.imshow(self.nxc,cmap='jet',interpolation='none',aspect='auto')
-        plt.colorbar()
+        plt.cla()
+        plt.imshow(self.nxc,cmap='jet',interpolation='none',aspect='auto',clim=(0,1.5))
         plt.autoscale(False)
         plt.plot(self.px,self.py,'ko')
         plt.subplot(2,2,2)
+        plt.cla()
         plt.imshow(self.im2,cmap='gray',interpolation='none',aspect='auto')
         plt.subplot(2,2,4)
+        plt.cla()
         plt.imshow(self.add(),cmap='gray',interpolation='none',aspect='auto')
-        plt.show()
 
     def add(self):
         x = self.x
@@ -214,100 +232,42 @@ class RegisteredPair:
         
         return (im1+im2)/2.0
 
+def strip_register(ref,tar,strip_width,step_size=None):
 
-def register_strip(ref,strip,sequential=True,y_guess=None):
-    rsy,rsx = ref.shape
-    ssy,ssx = strip.shape
-    if sequential:
-        y1vec = np.arange(0,rsy,ssy)
-        y2vec = y1vec+ssy
-
-        ymids = (y1vec+y2vec)/2.0
-        if y_guess is not None:
-            order = np.argsort(np.abs(ymids-y_guess))
-        else:
-            order = np.arange(len(ymids))
-            
-        cout = np.ones(len(ymids))*np.nan
-        xout = np.ones(len(ymids))*np.nan
-        yout = np.ones(len(ymids))*np.nan
-
-        plt.subplot(len(cout)+1,2,1)
-        plt.imshow(strip,cmap='gray')
+    if step_size is None:
+        step_size = strip_width
         
-        for idx in order:
-            y1 = y1vec[idx]
-            y2 = y2vec[idx]
-            
-            rstrip = ref[y1:y2,:]
-            rp = RegisteredPair(strip,rstrip)
-            cout[idx] = rp.correlation
-            xout[idx] = rp.x
-            yout[idx] = rp.y
-            plt.subplot(len(cout)+1,2,2*(idx+2)-1)
-            plt.imshow(rstrip,cmap='gray')
-            plt.title(rp.correlation)
-            plt.subplot(len(cout)+1,2,2*(idx+2))
-            plt.imshow(rp.nxc,cmap='jet')
-            plt.colorbar()
-        plt.show()
-        sys.exit()
-            
-    else:
-        rp = RegisteredPair(strip,ref)
+    rsy,rsx = ref.shape
+    tsy,tsx = tar.shape
 
+    ymid_vec = np.arange(0,tsy,step_size)
+    y1_vec = ymid_vec-strip_width//2
+    y2_vec = ymid_vec+strip_width//2+1
+    for y1,y2 in zip(y1_vec,y2_vec):
+        y1 = max(0,y1)
+        y2 = min(tsy,y2)
+        temp = tar.copy()
+        temp[:y1] = 0.0
+        temp[y2:] = 0.0
+        rp = RegisteredPair(ref,temp,normalize_rows=False)
+        rp.show()
+        plt.pause(.0001)
 def main():
 
-    noise_rms = np.linspace(0.0,2.0,128)
-    shift = np.linspace(0.0,20.0,128)
+    #stack = make_stack(2,xrms=10.,yrms=10.,noise_rms=0.04,line_rms=0.0,source_file='rocks.npy',width=1200,height=1200)
 
-    result = np.zeros((len(noise_rms),len(shift)))
-    
-    for nidx,nr in enumerate(noise_rms):
-        for sidx,s in enumerate(shift):
-            stack = make_stack(1,xrms=0.0,yrms=0.0,noise_rms=nr,line_rms=0.0,width=800,height=800)[0,:,:]
-            s = int(round(s))
-            a = stack[:200,:200]
-            b = stack[s:200+s,:200]
-            acrop = a[s:200,:200].ravel()
-            bcrop = b[:200-s,:200].ravel()
-            cc = np.corrcoef(acrop,bcrop)
-            rp = RegisteredPair(a,b)
-            result[nidx,sidx] = rp.correlation
-            try:
-                clim = np.percentile(result[:nidx-1,:],(0,100))
-            except:
-                clim = (0.0,1.0)
-            plt.cla()
-            plt.imshow(result,clim=clim)
-            #plt.colorbar()
-            plt.pause(.000001)
-    np.save('noise.npy',noise_rms)
-    np.save('shift.npy',shift)
-    np.save('result.npy',result)
-    sys.exit()
-    stack = make_stack(50,xrms=10.,yrms=10.,noise_rms=0.04,line_rms=0.0,width=800,height=800)
+    stack = np.load('infrared.npy')
+    a = stack[0,:,:]
+    b = stack[0,:,:]
 
-
+    #b[:250,:] = 0.0
+    #b[260:,:] = 0.0
     
+    #rp = RegisteredPair(a,b)
+    #rp.show()
+    #plt.show()
     
-    a = stack[0,:50,:500]
-    b = stack[0,5:55,10:510]
-
-    rp = RegisteredPair(a,b)
-    rp.show()
-    sys.exit()
-
+    strip_register(a,b,33,16)
     
-    y_guess0 = rp.y
-    
-    t0 = time.time()
-    for k in range(10):
-        y0 = 125
-        y1 = 150
-        ymid = (y1+y0)//2
-        y_guess = ymid+y_guess0
-        register_strip(a,b[y0:y1,:],True,y_guess=y_guess)
-    print time.time()-t0
 if __name__=='__main__':
     main()
