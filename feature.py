@@ -11,7 +11,7 @@ except ImportError:
     import ndimage.interpolation as ndii
 
 
-def transform(im1,im2,x1=[],y1=[],x2=[],y2=[],method='linear',fill_value=0.0):
+def transform(im1,im2,x1=[],y1=[],x2=[],y2=[],method='linear',fill_value=0.0,clim_percentile=(0,100)):
 
     # make a quasi-unique identifier for this image pair
     pair_key = '_'.join(['%0.3f'%k for k in [im1[0,0],im1[0,-1],im1[-1,0],im1[-1,-1],im2[0,0],im2[0,-1],im2[-1,0],im2[-1,-1]]])
@@ -20,31 +20,58 @@ def transform(im1,im2,x1=[],y1=[],x2=[],y2=[],method='linear',fill_value=0.0):
         os.mkdir('.feature_cache')
     
     hive = Hive(os.path.join('.feature_cache',pair_key))
+
+    try:
+        _x1 = hive.get('x1')
+        _x2 = hive.get('x2')
+        _y1 = hive.get('y1')
+        _y2 = hive.get('y2')
+        px = hive.get('px')
+        py = hive.get('py')
+        im2_transformed = hive.get('im2_transformed')
+        output = {'x1':x1,'y1':y1,'x2':x2,'y2':y2,'px':px,'py':py,'im2_transformed':im2_transformed}
+
+        assert type(_x1)==np.ndarray
+        assert type(_x2)==np.ndarray
+        assert type(_y1)==np.ndarray
+        assert type(_y2)==np.ndarray
+        assert type(px)==np.ndarray
+        assert type(py)==np.ndarray
+        assert type(im2_transformed)==np.ndarray
+        x1 = _x1
+        x2 = _x2
+        y1 = _y1
+        y2 = _y2
+    except Exception as e:
+        if not len(x1)*len(x2)*len(y1)*len(y2):
+            xc,yc,idx = collector([im1,im2],clim_percentile=clim_percentile)
+            x1 = xc[::2]
+            x2 = xc[1::2]
+            y1 = yc[::2]
+            y2 = yc[1::2]
+
+        px = np.polyfit(x1,x2,1)
+        x_scale = px[0]
+        x_shift = -px[1]/x_scale
+
+        py = np.polyfit(y1,y2,1)
+        y_scale = py[0]
+        y_shift = -py[1]/y_scale
+
+        # now we interpolate the second image into
+        # the coordinate space of the first
+        XX1,YY1 = np.meshgrid(np.arange(im1.shape[1]),np.arange(im1.shape[0]))
+        XX2,YY2 = np.meshgrid(np.arange(im2.shape[1]),np.arange(im2.shape[0]))
+        XX2 = XX2/x_scale-px[1]/px[0]
+        YY2 = YY2/y_scale-py[1]/py[0]
+
+        im2_transformed = np.reshape(griddata((YY2.ravel(),XX2.ravel()),im2.ravel(),(YY1.ravel(),XX1.ravel()),method=method,fill_value=fill_value),im1.shape)
+
+        output = {'x1':x1,'y1':y1,'x2':x2,'y2':y2,'px':px,'py':py,'im2_transformed':im2_transformed}
+
+        for k in output.keys():
+            hive.put(k,output[k])
     
-    if not len(x1)*len(x2)*len(y1)*len(y2):
-        xc,yc,idx = collector([im1,im2])
-        x1 = xc[::2]
-        x2 = xc[1::2]
-        y1 = yc[::2]
-        y2 = yc[1::2]
-
-    px = np.polyfit(x1,x2,1)
-    x_scale = px[0]
-    x_shift = -px[1]/x_scale
-
-    py = np.polyfit(y1,y2,1)
-    y_scale = py[0]
-    y_shift = -py[1]/y_scale
-
-    # now we interpolate the second image into
-    # the coordinate space of the first
-    XX1,YY1 = np.meshgrid(np.arange(im1.shape[1]),np.arange(im1.shape[0]))
-    XX2,YY2 = np.meshgrid(np.arange(im2.shape[1]),np.arange(im2.shape[0]))
-    XX2 = XX2/x_scale-px[1]/px[0]
-    YY2 = YY2/y_scale-py[1]/py[0]
-
-    im2_transformed = np.reshape(griddata((YY2.ravel(),XX2.ravel()),im2.ravel(),(YY1.ravel(),XX1.ravel()),method=method,fill_value=fill_value),im1.shape)
-
     plt.subplot(2,2,1)
     plt.imshow(im1)
     plt.subplot(2,2,2)
@@ -55,11 +82,6 @@ def transform(im1,im2,x1=[],y1=[],x2=[],y2=[],method='linear',fill_value=0.0):
     plt.imshow(im2_transformed-im1)
     plt.colorbar()
     plt.show()
-    
-    output = {'x1':x1,'y1':y1,'x2':x2,'y2':y2,'px':px,'py':py,'im2_transformed':im2_transformed}
-
-    for k in output.keys():
-        hive.put(k,output[k])
     
     return output
 

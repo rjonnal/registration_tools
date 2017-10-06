@@ -166,7 +166,6 @@ class RegisteredPair:
         else:
             nxc = nxcorr(im1,im2,True)
             nxc = np.fft.fftshift(nxc)
-            print 'got here'
             if normalize_rows:
                 plt.figure()
                 plt.subplot(1,2,1)
@@ -193,6 +192,9 @@ class RegisteredPair:
         self.im2 = im2
         self.nxc = nxc
 
+    def __str__(self):
+        return '(%0.1f,%0.1f),%0.3f'%(self.px,self.py,self.correlation)
+        
     def show(self):
         plt.subplot(2,2,1)
         plt.cla()
